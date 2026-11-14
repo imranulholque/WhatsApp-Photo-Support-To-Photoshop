@@ -28,14 +28,12 @@ static class Program
         using var f = new SetupForm();
         if (f.ShowDialog() != DialogResult.OK) return null;
         Directory.CreateDirectory(f.Result);
-        Directory.CreateDirectory(Path.Combine(f.Result, "PS-Ready"));
-        Directory.CreateDirectory(Path.Combine(f.Result, "Originals"));
         Directory.CreateDirectory(ConfigDir);
         File.WriteAllText(ConfigFile, f.Result);
         using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
         key?.SetValue(AppName, "\"" + Environment.ProcessPath + "\"");
-        MessageBox.Show($"Folder ready:\n{f.Result}\n\nWhatsApp theke chobi ei folder e download korun. " +
-            "Converted chobi PS-Ready folder e pabein. PC chalu holei eta auto cholbe.",
+        MessageBox.Show($"Developed by Imranul Hoque Sabbir\n\nFolder ready:\n{f.Result}\n\nWhatsApp theke chobi ei folder e download korun. " +
+            "Webp/heic/avif chobi auto Photoshop-friendly hoye ei folder-ei thakbe, original auto delete hobe. PC chalu holei eta auto cholbe.",
             AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
         return f.Result;
     }
@@ -55,24 +53,28 @@ class SetupForm : Form
     public SetupForm()
     {
         Text = "WhatsApp to Photoshop - folder setup";
-        ClientSize = new Size(460, 100);
+        ClientSize = new Size(460, 170);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
 
-        var l1 = new Label { Text = "Folder-er naam:", Left = 12, Top = 15, AutoSize = true };
-        name.SetBounds(130, 12, 310, 23);
-        var l2 = new Label { Text = "Kothay banabe:", Left = 12, Top = 52, AutoSize = true };
-        loc.SetBounds(130, 49, 230, 23);
-        var browse = new Button { Text = "Browse...", Left = 366, Top = 48, Width = 74 };
+        var credit = new Label
+        {
+            Text = "Developed by Imranul Hoque Sabbir",
+            Left = 12, Top = 10, AutoSize = true,
+            Font = new Font(Font.FontFamily, 11f, FontStyle.Bold)
+        };
+        var l1 = new Label { Text = "Folder-er naam:", Left = 12, Top = 55, AutoSize = true };
+        name.SetBounds(130, 52, 310, 23);
+        var l2 = new Label { Text = "Kothay banabe:", Left = 12, Top = 92, AutoSize = true };
+        loc.SetBounds(130, 89, 230, 23);
+        var browse = new Button { Text = "Browse...", Left = 366, Top = 88, Width = 74 };
         browse.Click += (_, _) =>
         {
             using var d = new FolderBrowserDialog { SelectedPath = loc.Text };
             if (d.ShowDialog() == DialogResult.OK) loc.Text = d.SelectedPath;
         };
-        var ok = new Button { Text = "Create", Left = 300, Top = 150, Width = 140 };
-        ClientSize = new Size(460, 190);
-        ok.Top = 90;
+        var ok = new Button { Text = "Create", Left = 300, Top = 128, Width = 140 };
         ok.Click += (_, _) =>
         {
             var n = name.Text.Trim();
@@ -84,15 +86,14 @@ class SetupForm : Form
             Result = Path.Combine(loc.Text, n);
             DialogResult = DialogResult.OK;
         };
-        Controls.AddRange(new Control[] { l1, name, l2, loc, browse, ok });
+        Controls.AddRange(new Control[] { credit, l1, name, l2, loc, browse, ok });
         AcceptButton = ok;
-        ClientSize = new Size(460, 130);
     }
 }
 
 class TrayContext : ApplicationContext
 {
-    readonly string watch, outDir, origDir;
+    readonly string watch;
     readonly NotifyIcon icon;
     readonly System.Threading.Timer timer;
     readonly HashSet<string> failed = new();
@@ -101,18 +102,17 @@ class TrayContext : ApplicationContext
     public TrayContext(string folder, Action change)
     {
         watch = folder;
-        outDir = Path.Combine(folder, "PS-Ready");
-        origDir = Path.Combine(folder, "Originals");
-        Directory.CreateDirectory(outDir);
-        Directory.CreateDirectory(origDir);
+        Directory.CreateDirectory(watch);
 
         var menu = new ContextMenuStrip();
+        menu.Items.Add("Developed by Imranul Hoque Sabbir").Enabled = false;
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open folder", null, (_, _) => System.Diagnostics.Process.Start("explorer.exe", watch));
-        menu.Items.Add("Open PS-Ready", null, (_, _) => System.Diagnostics.Process.Start("explorer.exe", outDir));
         menu.Items.Add("Change folder", null, (_, _) => change());
         menu.Items.Add("Exit", null, (_, _) => { icon!.Visible = false; ExitThread(); });
         icon = new NotifyIcon { Icon = SystemIcons.Application, Text = "WhatsApp to Photoshop", Visible = true, ContextMenuStrip = menu };
 
+        icon.ShowBalloonTip(4000, "WhatsApp to Photoshop", "Developed by Imranul Hoque Sabbir\nAuto convert cholche.", ToolTipIcon.Info);
         timer = new System.Threading.Timer(_ => Scan(), null, 1000, 2000);
     }
 
@@ -124,7 +124,7 @@ class TrayContext : ApplicationContext
             foreach (var f in Directory.GetFiles(watch))
             {
                 var ext = Path.GetExtension(f).ToLowerInvariant();
-                if (ext is not (".webp" or ".jpg" or ".jpeg" or ".png" or ".heic" or ".avif")) continue;
+                if (ext is not (".webp" or ".heic" or ".avif")) continue;
                 if (failed.Contains(f)) continue;
                 try { Convert(f, ext); }
                 catch (IOException) { /* file still downloading, retry next tick */ }
@@ -139,14 +139,17 @@ class TrayContext : ApplicationContext
     {
         using (File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
         var name = Path.GetFileNameWithoutExtension(file);
-        var outExt = ext is ".webp" or ".png" ? ".png" : ".jpg";
-        var dest = Unique(outDir, name, outExt);
+        var isPng = ext == ".webp";
+        var dest = Unique(watch, name, isPng ? ".png" : ".jpg");
+        var tmp = dest + ".tmp";
         using (var img = new MagickImage(file))
         {
             img.AutoOrient();
-            img.Write(dest);
+            img.Write(tmp, isPng ? MagickFormat.Png : MagickFormat.Jpeg);
         }
-        File.Move(file, Unique(origDir, name, ext));
+        if (!File.Exists(tmp) || new FileInfo(tmp).Length == 0) throw new Exception("convert failed");
+        File.Move(tmp, dest);
+        File.Delete(file);
     }
 
     static string Unique(string dir, string name, string ext)

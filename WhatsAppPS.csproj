@@ -6,6 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>WhatsAppPS</AssemblyName>
+    <Authors>Imranul Hoque Sabbir</Authors>
+    <Company>Imranul Hoque Sabbir</Company>
+    <Product>WhatsApp to Photoshop</Product>
+    <Copyright>Developed by Imranul Hoque Sabbir</Copyright>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
